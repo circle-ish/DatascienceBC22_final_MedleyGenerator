@@ -304,33 +304,68 @@ class MyMySQLConnection:
 ##########     MISC ###########################
 #########################################################################
 PRINTLOGGERCOUNTER = 0
+PRINTLOGGERSPACER = 1
 class PrintLogger():    
-    def __init__(self, text, colour):
+    def __init__(self, text = None, important=False, colour = None, space = None, entity = None):
         self.colour = colour
-        print(self.colour + f'-+-+ {text}')
-    
-    
+        self.text = text
+        self.leading_string = f"{'-':<{space}}{'+':<{space}}{'-':<{space}}{'+':<{space}} {entity}:"
+        
+        if self.text:
+            if important:
+                self.print_important(self.text)
+            else:
+                self.printer(self.text)
+            
     def __enter__(self):
         pass
     
     def __exit__(self, exc_type, exc_value, exc_traceback):
         if exc_type:
-            print(self.colour + '-+-+ FAILED')
-            print(exc_type, exc_value, exc_traceback)
+            if self.text:
+                self.printer(self.text + ' FAILED')
+            print(exc_type, exc_value)#, exc_traceback)
         else:
-            print(self.colour + '-+-+ SUCCESSFUL')
-    
+            if self.text:
+                self.printer(self.text + ' SUCCESSFUL')
+            
+    def log(self, text, important = False):
+        if important:
+            self.print_important(text)
+        else:
+            self.printer(text)
+            
+    def print_important(self, text):
+        reset = '\033[0m' #\x1b[0m
+        red = reset + "\x1b[1;31m"
+        print(self.colour + f"{self.leading_string}" + red + f"  {text}")
+        
+    def printer(self, text):
+        print(self.colour + f'{self.leading_string}  {text}')
+        
+        
     @classmethod        
-    def register(cls):
+    def register(cls, entity):
+        # ANSI colours; for more https://gist.github.com/rene-d/9e584a7dd2935d0f461904b9f2950007
         colour_wheel = (
-            "\033[0m",   # End of color
+            "\033[0m",   # Black
             "\033[36m",  # Cyan
-            "\033[91m",  # Red
+            "\033[0;37m", # LIGHT_GRAY
             "\033[35m",  # Magenta
+            "\033[0;33m", # Brown
+            "\033[1;33m", #Yellow
         )
             
         global PRINTLOGGERCOUNTER
         colour = PRINTLOGGERCOUNTER
         PRINTLOGGERCOUNTER = (PRINTLOGGERCOUNTER + 1) % len(colour_wheel)
         
-        return lambda x: PrintLogger(text = x, colour = colour_wheel[colour])
+        global PRINTLOGGERSPACER
+        space = PRINTLOGGERSPACER
+        PRINTLOGGERSPACER = (PRINTLOGGERSPACER + 1)
+        
+        colour = colour_wheel[colour]
+        empty = ''
+        print(colour + f"{'-':<{space}}{'+':<{space}}{'-':<{space}}{'+':<{space}} This is {entity} registring.")
+        
+        return lambda *args, **kwargs: PrintLogger(*args, **kwargs, colour = colour, space = space, entity = entity)
