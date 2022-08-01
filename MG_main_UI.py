@@ -3,8 +3,9 @@ import streamlit.components.v1 as components
 
 # ___________________ Load Player ___________________ 
 # requires Spotify Premium
-def embed_spotify():
-
+def embed_spotify():    
+    st.session_state.token = st.session_state.mg_backend.get_token()
+    
     # following https://developer.spotify.com/documentation/web-playback-sdk/quick-start/
     embed_spotify_string = f'''
         <script src="https://sdk.scdn.co/spotify-player.js" asynch></script>
@@ -43,7 +44,7 @@ def search_playlist(**kwargs):
     st.session_state.mg_pl_uri, \
         st.session_state.mg_pl_names, \
         _, \
-        st.session_state.mg_pl_track_total = mg_backend.search_playlist(st.session_state.sp_pl_query)
+        st.session_state.mg_pl_track_total = st.session_state.mg_backend.search_playlist(st.session_state.sp_pl_query)
 
     st.session_state.mg_pl_index = list(range(len(st.session_state.mg_pl_names)))
 
@@ -51,8 +52,9 @@ def toggle_play():
     return_code = mg_backend.toggle_play()
     
 def play():
-    play = mg_backend.sp_play()
-    with mg_backend.create_medley(st.session_state.mg_pl_uri, st.session_state.play_duration_in_sec) as mg:
+    play = st.session_state.mg_backend.sp_play()
+    pl_uri = st.session_state.mg_pl_uri[st.session_state.sp_pl_selected]
+    with st.session_state.mg_backend.create_medley(pl_uri, st.session_state.play_duration_in_sec) as mg:
         while(mg.keep_playing):
             st.session_state.play_uri, st.session_state.play_offset_in_ms = next(mg)
             play(st.session_state.play_uri, position_ms={'position': st.session_state.play_offset_in_ms})
@@ -68,11 +70,12 @@ def popup(text):
         with st.spinner(text) as s:
             try:
                 yield [c]
-                yield [s]
+                #yield [s]
             except Exception as exc:
                 print(f'-+-+ FAILED: {text}')
             finally:
-                print(f'-+-+ SUCCESSFUL: {text}')
+                pass
+            print(f'-+-+ SUCCESSFUL: {text}')
 
 def pass_popup():
     return lambda x: popup(text = x)
@@ -133,8 +136,8 @@ if __name__ == "__main__":
     # cached via interface
     SP_PLAYER_NAME = 'MEDLEY PLAYER'
     st.session_state.play_duration_in_sec = 15
-    mg_backend = MedleyGenerator(player_name = SP_PLAYER_NAME, _dumb_info = pass_popup())
-    st.session_state.token = mg_backend.get_token()
+    if 'mg_backend' not in st.session_state:
+        st.session_state.mg_backend = MedleyGenerator(player_name = SP_PLAYER_NAME)#, _dump_info = pass_popup())
     
     local_css("src/style.css")
     main()
