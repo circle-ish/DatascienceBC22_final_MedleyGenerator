@@ -1,29 +1,38 @@
 class MedleyGenerator():
      
-    def __init__(self, player_name, _dump_info = None):
+    from src.utils import PrintLogger
+    
+    def __init__(self, player_name, _dump_info = PrintLogger.register('MedleyGenerator')):
         from src.streamlit_interface import AsyncHandler
             
         self.song_dict = {}
         self.dump_info = _dump_info
-        if not self.dump_info:
-            from src.utils import PrintLogger
-            self.dump_info = PrintLogger.register()
+        self.player_name = player_name
             
+        self.sp_handler = None
+        self.yt_handler = None
         self.ash = AsyncHandler()
-        self.ash.run(self.setup(device_name))
+        import asyncio
+        with self.dump_info('Setting up MG'):
+            if not self.ash.is_event_loop_running():
+                asyncio.run(self.setup())
+            else:
+                self.dump_info().log('Call asyncio.create_task on setup() manually.', important=True)
+                
     
-    async def setup(self, device_name):
+    async def setup(self):
         from src.streamlit_interface import SpotifyHandler, YoutubeHandler
         import os
         
-        self.yt_handler = YoutubeHandler(_async_handler = self.ash)
-        self.sp_handler = SpotifyHandler(_async_handler = self.ash, 
+        with self.dump_info('Setting up Connection to Spotify'):
+            self.sp_handler = SpotifyHandler(_async_handler = self.ash, 
                                          env_file_path = os.path.join(os.getcwd(), '.env_spotify'), 
-                                         playable=True)
+                                         playable = True)
         
+        with self.dump_info('Creating YoutubeHandler'):
+            self.yt_handler = YoutubeHandler(_async_handler = self.ash)
         with self.dump_info('Setting up Connection to Youtube'):
-            self.yt_handler.setup()
-        self.device_id = self.sp_handler.get_device_id(device_name, wait=True)
+            await self.ash.create_task(self.yt_handler.setup())
         
     def get_token(self):
         return self.sp_handler.get_token()
@@ -35,48 +44,71 @@ class MedleyGenerator():
         # lambda func as opposed to functools.partials use late bindings (keeping the reference
         # to the scope of device_id but fetching it not until execution) which makes it perfect
         # to avoid problems around changing device id
+        with self.dump_info(f'Getting Spotify device_id for {self.player_name}'):
+            self.device_id = self.sp_handler.get_device_id(self.player_name, wait=True)
         play_func = lambda x: self.sp_handler.play(uri = x, device_id = self.device_id)
         return play_func
     
     def toggle_play(self):
+        with self.dump_info(f'Getting Spotify device_id for {self.player_name}'):
+            self.device_id = self.sp_handler.get_device_id(self.player_name, wait=True)
         return_code = self.sp_handler.toggle_play(self.device_id)
         return return_code
         
     def create_medley(self, pl_uri, snippet_duration_in_sec):
-        self.gather_songs(pl_uri, snippet_duration_in_sec)
+        import asyncio
+        
+        song_queue_name = 'songs'
+        self.ash.add_queue(song_queue_name)
+        
+        with self.dump_info('Gathering Songs'):
+            if not self.ash.is_event_loop_running():
+                asyncio.run(self.gather_songs(
+                                    pl_uri, 
+                                    snippet_duration_in_sec, 
+                                    self.ash.get_queue(song_queue_name)))
+            else:
+                self.dump_info().log('Call asyncio.create_task on gather_songs() manually.', important=True)
                 
-        return MedleyContextManager(self, self.song_dict)
+        return MedleyContextManager(self.ash.get_queue(song_queue_name))
                    
-    def gather_songs(self, pl_uri, snippet_duration_in_sec):
+    async def gather_songs(self, pl_uri, snippet_duration_in_sec, song_queue):
         # get tracks for chosen playlist
         with self.dump_info('Retrieving Songs from Spotify'):
             sp_track_uri, sp_track_names, sp_track_artists, sp_track_duration, sp_track_popularity = \
                 self.sp_handler.get_playlist_tracks(pl_uri)
 
         # search tracks on yt
-        with self.dump_info('Grab Popularity from Youtube'):
-            for counter in range(len(sp_track_names)):
-                yt_vid_id, yt_vid_name = self.yt_handler.search(sp_track_names[counter])
+        for counter in range(len(sp_track_names)):
+            yt_vid_id, yt_vid_name = self.yt_handler.search(sp_track_names[counter])
 
-                # choose popular moments
-                popularity_graph = self.yt_handler.get_most_replayed(yt_vid_id, sp_track_duration[counter])
+            # choose popular moments
+            
+            with self.dump_info(f'Grab Popularity from Youtube for "{yt_vid_name}"'):
+                popularity_graph = await self.yt_handler.get_most_replayed(yt_vid_id, sp_track_duration[counter])
                 snippet_start_in_ms = self.sliding_window(popularity_graph, snippet_duration_in_sec)
 
-                uri_as_key = sp_track_uri[counter]
-                self.song_dict[uri_as_key] = Song(
-                                            uri_as_key,
-                                            sp_track_names[counter],
-                                            sp_track_artists[counter],
-                                            sp_track_duration[counter],
-                                            sp_track_popularity[counter],
-                                            yt_vid_id,
-                                            yt_vid_name,
-                                            popularity_graph,
-                                            snippet_start_in_ms)
-    
+            uri_as_key = sp_track_uri[counter]
+            await song_queue.put(Song(
+                                        uri_as_key,
+                                        sp_track_names[counter],
+                                        sp_track_artists[counter],
+                                        sp_track_duration[counter],
+                                        sp_track_popularity[counter],
+                                        yt_vid_id,
+                                        yt_vid_name,
+                                        popularity_graph,
+                                        snippet_start_in_ms)
+                                )
+
+
+            if counter == 1:
+                break # <<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<------------------------ testing
+
     def sliding_window(self, graph, window_size_in_sec):
         from pandas import DataFrame as pd_DataFrame
         from pandas import offsets as pd_offsets
+        from pandas import to_datetime as pd_to_datetime
         
         df_graph = pd_DataFrame(data = graph)
         df_graph.rename(columns = {'x': 'time', 'y': 'popularity'}, inplace=True)
@@ -86,10 +118,11 @@ class MedleyGenerator():
         df_graph.fillna(0, inplace=True)
         df_graph['scaled_popularity'] = df_graph['time_shift'] * df_graph['popularity']
 
+        self.dump_info().log(f'Choosing best moment from popularity graph.')
         window_dt = pd_offsets.Second(window_size_in_sec)
         df_windowed_popularity = (
                 df_graph 
-                    .set_index(pd.to_datetime(df_graph['time'].array, unit='s'))['scaled_popularity']
+                    .set_index(pd_to_datetime(df_graph['time'].array, unit='s'))['scaled_popularity']
                     .rolling(window=f'{window_size_in_sec}s')
                     .sum()
                  )
@@ -100,45 +133,62 @@ class MedleyGenerator():
         return (snippet_start.minute*60 + snippet_start.second) * 1000 
 
 class MedleyContextManager():
+    from src.utils import PrintLogger
 
-    def __init__(self, songs):    
+    def __init__(self, async_song_queue, _dump_info = PrintLogger.register('MedleyContextManager')):    
         from datetime import datetime as dt 
         
-        self.keep_playing = False
+        # is a dict to be able to pass it by reference: change the value inside the class
+        # and see the change reflected by the passed out reference
+        self.status = {'has_next_song': False}
         self.current_song = None
         self.next_song = None
 
-        self.medley_started = dt.now()
-        self.choose_next_song()
-        self.songs = songs
+        self.medley_starting_time = dt.now()
+        self.song_dict = None
+        self.dump_info = _dump_info
+        self.song_queue = async_song_queue
+        
+    async def __aenter__(self):
+        self.status['has_next_song'] = True
+        return self.status, self.generator
 
-    def __enter__(self):
-        self.keep_playing = True
-
-    def __exit__(self, exc_type, exc_value, exc_traceback):
-        if not exc_type:
+    async def __aexit__(self, exc_type, exc_value, exc_traceback):
+        if exc_type:
             print(exc_type, exc_value, exc_traceback)
 
-    def choose_next_song(self):
-        for song in self.songs.values():
+    async def choose_next_song(self):
+        while True:
+            song = await self.song_queue.get()
+            self.song_dict[song.uri] = song
+            self.song_queue.task_done()
+            
+        for song in self.song_dict.values():
             if (not song.last_played) or (song.last_played < self.medley_starting_time):
+                self.dump_info().log(f'Choosing {song.name} as next song.')
                 self.next_song = song 
                 break
                 
         if not self.next_song:
-            self.keep_playing = False
+            self.dump_info().log(f'No songs left.')
+            self.status['has_next_song'] = False
 
-    def __iter__(self):
-        # do something if song is not chosen yet
-        if not self.next_song:
-            pass
+    async def generator(self):
+        await self.choose_next_song()
+        
+        while(self.status['has_next_song']):# do something if song is not chosen yet
+            if not self.next_song:
+                pass
 
-        self.current_song = self.next_song
-        self.next_song = None
-
-        yield self.current_song.uri, self.current_song.snippet_start_in_ms
-        self.current_song.last_played = dt.now()
-        choose_next_song()
+            self.current_song = self.next_song
+            self.next_song = None
+            
+            self.dump_info().log(f'Returning {self.current_song.name}')
+            yield self.current_song.uri, self.current_song.snippet_start_in_ms
+            
+            from datetime import datetime as dt 
+            self.current_song.last_played = dt.now()
+            self.choose_next_song()
                 
 class Song():
     
