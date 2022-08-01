@@ -105,8 +105,8 @@ class SpotifyHandler():
         else:
             return self.PlaybackStatus.PAUSED
     
-    def play(self, uri, *args, **kwargs):
-        self.sp.start_playback(context_uri = uri, *args, **kwargs)
+    def play(self, *args, **kwargs):
+        self.sp.start_playback(*args, **kwargs)
             
     def toggle_play(self, device_id):
         res = self.is_playing(device_id)
@@ -139,7 +139,7 @@ class SpotifyHandler():
         return pl_uri, pl_names, pl_image_url, pl_track_total      
     
     def get_playlist_tracks(self, pl_uri):
-        res = sp_handler.retrieve('playlist', pl_uri)
+        res = self.retrieve('playlist', pl_uri)
         track_uri = []
         track_names = []
         track_popularity = []
@@ -152,7 +152,7 @@ class SpotifyHandler():
             track_popularity.append(track['popularity'])
             track_duration.append(track['duration_ms'])
 
-            artist_len = len(track[track_number]['track']['artists'])
+            artist_len = len(track['artists'])
             artists = []
             for artist_number in range(artist_len):
                 artists.append(track['artists'][artist_number]['name'])
