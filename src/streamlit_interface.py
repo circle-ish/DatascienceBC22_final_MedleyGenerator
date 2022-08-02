@@ -8,10 +8,22 @@ def SpotifyHandler(*args, **kwargs):
     return SpotifyHandler(*args, **kwargs)
 
 @st_singleton
+def RequestsYTHandler(*args, **kwargs):
+    from src.RequestsYTHandler import RequestsYTHandler
+    
+    return RequestsYTHandler(*args, **kwargs)   
+
+@st_singleton
+def SeleniumYTHandler(*args, **kwargs):
+    from src.SeleniumYTHandler import SeleniumYTHandler
+    
+    return SeleniumYTHandler(*args, **kwargs)  
+
+@st_singleton
 def YoutubeHandler(*args, **kwargs):
     from src.YoutubeHandler import YoutubeHandler
     
-    return YoutubeHandler(*args, **kwargs)    
+    return YoutubeHandler(*args, **kwargs)   
 
 @st_singleton
 def MedleyGenerator(*args, **kwargs):
