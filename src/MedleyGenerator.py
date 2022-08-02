@@ -21,7 +21,7 @@ class MedleyGenerator():
                 
     
     async def setup(self):
-        from src.streamlit_interface import SpotifyHandler, YoutubeHandler
+        from src.streamlit_interface import SpotifyHandler, RequestsYTHandler
         import os
         
         with self.dump_info('Setting up Connection to Spotify'):
@@ -30,7 +30,7 @@ class MedleyGenerator():
                                          playable = True)
         
         with self.dump_info('Creating YoutubeHandler'):
-            self.yt_handler = YoutubeHandler(_async_handler = self.ash)
+            self.yt_handler = RequestsYTHandler(_async_handler = self.ash)
         with self.dump_info('Setting up Connection to Youtube'):
             await self.ash.create_task(self.yt_handler.setup())
         
