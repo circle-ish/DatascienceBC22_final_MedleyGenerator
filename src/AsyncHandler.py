@@ -21,7 +21,8 @@ class AsyncHandler():
             if exc_type:
                 print(exc_type, exc_value, exc_traceback)
         
-    async def yielder(self, async_generator):
+    @classmethod
+    async def yielder(cls, async_generator):
         item = None
         async for i in async_generator():
             item = i
