@@ -53,6 +53,24 @@ class ProxyServer():
                 line = f'{protocol}://{proxy.host}:{proxy.port}\n'
                 yield line
 
+            
+    async def get_proxy(self):
+        from src.AsyncHandler import AsyncHandler as ash
+
+        proxy_string = await ash.yielder(self.get_random_proxy)
+        if not proxy_string:
+            self.dump_info().log('Requesting new proxies.')
+            await self.find_proxies()
+            proxy_string = await ash.yielder(self.get_random_proxy)
+         
+        return self.read_proxy_string(proxy_string)
+    
+    def read_proxy_string(self, proxy_str):
+        # i.e. proxy_str = 'https://163.116.131.129:8080'
+        [ip, port] = proxy_str.lstrip('https://').split(':') 
+        port = int(port)
+        return ip, port
+    
     async def find_proxies(self):
         european_country_codes = ['DE', 'AT', 'FR', 'UK', 'IT', 'HU', 'IE', 'GR', 'LV', 'LT', 'NL', 'PL', 'RO', 'SK', 'SI', 'ES', 'SE', 'BE', 'BG', 'HR', 'DK', 'EE', 'FI']
         producer = self.ash.create_task(self.broker.find(
