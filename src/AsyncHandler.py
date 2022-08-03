@@ -111,4 +111,7 @@ class AsyncHandler():
         
         return self.running_loop
         
+    async def sleep(self, duration):
+        from asyncio import sleep as asyncio_sleep
+        await asyncio_sleep(duration)
     

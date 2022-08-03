@@ -338,7 +338,7 @@ class PrintLogger():
     def print_important(self, text):
         reset = '\033[0m' #\x1b[0m
         red = reset + "\x1b[1;31m"
-        print(self.colour + f"{self.leading_string}" + red + f"  {text}")
+        print(self.colour + f"{self.leading_string}" + red + f"  {text}" + reset)
         
     def printer(self, text):
         print(self.colour + f'{self.leading_string}  {text}')
