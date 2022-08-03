@@ -164,7 +164,7 @@ class SeleniumHandler(YoutubeHandler):
         result = [i.get_attribute(attribute_string) for i in result]
         return result
         
-    async def get_heatmaps_from_yt(self, total_duration_in_sec):            
+    async def get_heatmaps_from_yt(self, total_duration_in_ms):            
         scrape_dict = {
             'heatmap' : ('.ytp-heat-map-path', 'd'),
             'chapters': ('.ytp-heat-map-chapter', 'style')
@@ -176,9 +176,9 @@ class SeleniumHandler(YoutubeHandler):
         with self.dump_info(f'Attempting to scrape chapter sizes.'):
             chapter_times = await self.locate_by_css((scrape_dict['chapters'])
         
-        return self.build_graph(chapter_times, heatmaps, total_duration_in_sec)
+        return self.build_graph(chapter_times, heatmaps, total_duration_in_ms)
         
-    def build_graph(self, chapter_times, heatmaps, total_duration_in_sec):
+    def build_graph(self, chapter_times, heatmaps, total_duration_in_ms):
         from re import findall as re_findall
         from re import match as re_match
         
@@ -201,7 +201,8 @@ class SeleniumHandler(YoutubeHandler):
             graph['y'].extend([100.0 - float(i) for i in coords[1]])
 
         assert graph['x'][-1] == max(graph['x'])
-        graph['x'] = [i * total_duration_in_sec / graph['x'][-1] for i in graph['x']]
+        graph['x'] = [i * total_duration_in_ms / graph['x'][-1] for i in graph['x']]
+        graph['is_regular'] = False
         return graph 
     
     # deprecated

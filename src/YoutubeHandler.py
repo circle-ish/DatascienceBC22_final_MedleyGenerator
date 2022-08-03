@@ -67,13 +67,13 @@ class YoutubeHandler():
     async def get(self, url, retries = 0):
         pass
         
-    async def get_most_replayed(self, vid_id, total_duration_in_sec):  
+    async def get_most_replayed(self, vid_id, total_duration_in_ms):  
         video_path = f'https://www.youtube.com/watch?v={vid_id}'
         
         self.dump_info().log(f'Opening URL {video_path}')
         await self.get(video_path)
         
-        graph = await self.get_heatmaps_from_yt(total_duration_in_sec)
+        graph = await self.get_heatmaps_from_yt(total_duration_in_ms)
         return graph 
     
     def search(self, query):

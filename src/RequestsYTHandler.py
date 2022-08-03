@@ -82,7 +82,7 @@ class RequestsYTHandler(YoutubeHandler):
                     retries += 1
                     await self.get(url, retries = retries)
     
-    async def get_heatmaps_from_yt(self, total_duration_in_sec):
+    async def get_heatmaps_from_yt(self, total_duration_in_ms):
         # cannot use json directly on full response; regex search first
         from re import findall as re_findall
         
@@ -94,9 +94,17 @@ class RequestsYTHandler(YoutubeHandler):
         (time_start_in_ms, duration_in_ms, score) = \
                             list(zip(*[(float(a), float(b), float(c)) for a,b,c in matches]))
         
-        max_time = time_start_in_ms[-1]
+        max_time = time_start_in_ms[-1] + duration_in_ms[-1]
         
         graph = {}
-        graph['x'] = list(map(lambda x: x / max_time * total_duration_in_sec, time_start_in_ms))
+        # converting to seconds
+        graph['x'] = list(map(lambda x: x / max_time * total_duration_in_ms, time_start_in_ms))
         graph['y'] = score
+        
+        from numpy import std as np_std
+        if np_std(duration_in_ms) == 0:
+            graph['is_regular'] = True
+        else:
+            graph['is_regular'] = False
+            
         return graph
