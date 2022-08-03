@@ -1,10 +1,19 @@
 class SpotifyHandler():
+     
+    from src.utils import PrintLogger
     
-    def __init__(self, _async_handler, env_file_path, playable = False):
+    def __init__(
+                    self, 
+                    _async_handler, 
+                    env_file_path, 
+                    dump_info = PrintLogger.register('SpotifyHandler'),
+                    playable = False
+    ):
         self.sp = self.setup_spotify_connection(env_file_path, playable)
         self.token = None
         self.token_timestamp = None
         self.ash = _async_handler
+        self.dump_info = dump_info
         
     def setup_spotify_connection(self, env_file_path, playable):
         from src.utils import install_pip_pkg
@@ -74,12 +83,27 @@ class SpotifyHandler():
         return self.token
     
     def get_device_id(self, for_name, wait = False):
-        devices_dict = self.sp.devices()['devices']
+        devices_dict = None
+        from requests import ConnectionError
+        
+        while not devices_dict:
+            try:
+                devices_dict = self.sp.devices()['devices']
+            except ConnectionError as ce:
+                devices_dict = None
+                self.dump_info().log('ConnectionError: waiting endlessly.', important = True)
+                from time import sleep
+                sleep(3)
+        
         device_id = next((item['id'] for item in devices_dict if item['name'] == for_name), None)
         if wait and (not device_id):
             from time import sleep
             
             while (wait and (not device_id)):
+                
+                # handle reloading of embed
+                self.dump_info().log('waiting in endless loop: handle reloading of embed', important = True)
+                
                 sleep(1)
                 devices_dict = self.sp.devices()['devices']
                 device_id = next((item['id'] for item in devices_dict if item['name'] == for_name), None)
@@ -106,7 +130,14 @@ class SpotifyHandler():
             return self.PlaybackStatus.PAUSED
     
     def play(self, *args, **kwargs):
-        self.sp.start_playback(*args, **kwargs)
+        from spotipy import SpotifyException
+        try:
+            self.sp.start_playback(*args, **kwargs)
+        except SpotifyException as se:
+            self.dump_info().log({se}, important = True)
+            
+            # handle reloading of embed
+            self.dump_info().log('handle reloading of embed', important = True)
             
     def toggle_play(self, device_id):
         res = self.is_playing(device_id)
