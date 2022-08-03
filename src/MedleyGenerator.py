@@ -2,11 +2,11 @@ class MedleyGenerator():
      
     from src.utils import PrintLogger
     
-    def __init__(self, player_name, _dump_info = PrintLogger.register('MedleyGenerator')):
+    def __init__(self, player_name, dump_info = PrintLogger.register('MedleyGenerator')):
         from src.streamlit_interface import AsyncHandler
             
         self.song_dict = {}
-        self.dump_info = _dump_info
+        self.dump_info = dump_info
         self.player_name = player_name
             
         self.sp_handler = None
@@ -25,7 +25,7 @@ class MedleyGenerator():
         import os
         
         with self.dump_info('Setting up Connection to Spotify'):
-            self.sp_handler = SpotifyHandler(_async_handler = self.ash, 
+            self.sp_handler = SpotifyHandler(_async_handler = self.ash,
                                          env_file_path = os.path.join(os.getcwd(), '.env_spotify'), 
                                          playable = True)
         
@@ -104,32 +104,47 @@ class MedleyGenerator():
 
             if counter == 1:
                 break # <<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<------------------------ testing
-
+    
     def sliding_window(self, graph, window_size_in_sec):
         from pandas import DataFrame as pd_DataFrame
         from pandas import offsets as pd_offsets
         from pandas import to_datetime as pd_to_datetime
         
+        graph_x_is_regular = graph.pop('is_regular')
         df_graph = pd_DataFrame(data = graph)
         df_graph.rename(columns = {'x': 'time', 'y': 'popularity'}, inplace=True)
 
-        # weighting popularity based on assigned duration since timeseries is irregular
-        df_graph['time_shift'] = df_graph[['time']].diff().set_index(df_graph.index - 1)
-        df_graph.fillna(0, inplace=True)
-        df_graph['scaled_popularity'] = df_graph['time_shift'] * df_graph['popularity']
-
         self.dump_info().log(f'Choosing best moment from popularity graph.')
-        window_dt = pd_offsets.Second(window_size_in_sec)
+
+        # selenium based extracted heatmaps have variable timestamps
+        # requests based heatmaps are perfectly spaced
+        if not graph_x_is_regular:
+            # weighting popularity based on assigned duration since timeseries is irregular
+            df_graph['time_shift'] = (
+                    df_graph[['time']]
+                        .diff()                        # difference from one row to the next
+                        .set_index(df_graph.index - 1) # having the last index nan instead of the first
+            )
+            df_graph.fillna(0, inplace=True)
+            df_graph['scaled_popularity'] = df_graph['time_shift'] * df_graph['popularity'] # linear weighting
+        else:
+            df_graph['scaled_popularity'] = df_graph['popularity']
+                                        
         df_windowed_popularity = (
                 df_graph 
-                    .set_index(pd_to_datetime(df_graph['time'].array, unit='s'))['scaled_popularity']
+                    .set_index(pd_to_datetime(df_graph['time'].array, unit='ms'))['scaled_popularity']
                     .rolling(window=f'{window_size_in_sec}s')
                     .sum()
                  )
                     
+        # end of snippet because default of pd.rolling above is to write a resulting value in its 
+        # right-most df entry
         snippet_end = df_windowed_popularity.idxmax()
+        window_dt = pd_offsets.Second(window_size_in_sec)
+                     
+        # automatically floor capped at 0
         snippet_start = snippet_end - window_dt
-        
+        self.dump_info().log(f'Found highest popularity at {snippet_start.minute}:{snippet_start.second}')
         return (snippet_start.minute*60 + snippet_start.second) * 1000 
 
 class MedleyContextManager():
@@ -145,7 +160,7 @@ class MedleyContextManager():
         self.next_song = None
 
         self.medley_starting_time = dt.now()
-        self.song_dict = None
+        self.song_dict = {}
         self.dump_info = _dump_info
         self.song_queue = async_song_queue
         
@@ -157,15 +172,15 @@ class MedleyContextManager():
         if exc_type:
             print(exc_type, exc_value, exc_traceback)
 
-    async def choose_next_song(self):
-        while True:
-            song = await self.song_queue.get()
+    def choose_next_song(self):
+        while not self.song_queue.empty():
+            song = self.song_queue.get_nowait()
             self.song_dict[song.uri] = song
             self.song_queue.task_done()
             
         for song in self.song_dict.values():
             if (not song.last_played) or (song.last_played < self.medley_starting_time):
-                self.dump_info().log(f'Choosing {song.name} as next song.')
+                #self.dump_info().log(f'Choosing {song.name} as next song.')
                 self.next_song = song 
                 break
                 
@@ -173,8 +188,8 @@ class MedleyContextManager():
             self.dump_info().log(f'No songs left.')
             self.status['has_next_song'] = False
 
-    async def generator(self):
-        await self.choose_next_song()
+    def generator(self):
+        self.choose_next_song()
         
         while(self.status['has_next_song']):# do something if song is not chosen yet
             if not self.next_song:
