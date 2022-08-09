@@ -51,14 +51,23 @@ def search_playlist(**kwargs):
 def toggle_play():
     return_code = mg_backend.toggle_play()
     
-def play():
-    play = st.session_state.mg_backend.sp_play()
+async def play():    
+    mg = st.session_state.mg_backend
+    snippet_length = st.session_state.play_duration_in_sec
+    play_func = mg.sp_play()
     pl_uri = st.session_state.mg_pl_uri[st.session_state.sp_pl_selected]
-    with st.session_state.mg_backend.create_medley(pl_uri, st.session_state.play_duration_in_sec) as mg:
-        while(mg.keep_playing):
-            st.session_state.play_uri, st.session_state.play_offset_in_ms = next(mg)
-            play(st.session_state.play_uri, position_ms={'position': st.session_state.play_offset_in_ms})
-
+    
+    # MedleyContextManager
+    async with mg.create_medley(pl_uri, snippet_length) as status_and_generator:
+        await mg.gather_songs(pl_uri, snippet_length, mg.ash.get_queue('songs')) # making songs available
+        status = status_and_generator[0]
+        mg_play = status_and_generator[1]()
+            
+        for play_uri, play_offset_in_ms in mg_play:
+            play_func(play_uri, position_ms = play_offset_in_ms)
+            await mg.ash.sleep(snippet_length)
+    mg.toggle_play()
+            
 def display_player():    
     st.button(label='TOGGLE PLAY', on_click=toggle_play, args=())
 
@@ -73,17 +82,35 @@ def popup(text):
                 #yield [s]
             except Exception as exc:
                 print(f'-+-+ FAILED: {text}')
+                #return
             finally:
                 pass
+            
+            #from time import sleep
+            #sleep(2)
             print(f'-+-+ SUCCESSFUL: {text}')
 
 def pass_popup():
     return lambda x: popup(text = x)
 
-def main():
+async def main():            
+    print('main again --------------------------------------------------------------')
     st.title(SP_PLAYER_NAME)  
     
     st.session_state.status = st.empty()
+    
+    if 'mg_backend' not in st.session_state:
+        print('setup')
+        st.session_state.mg_backend = MedleyGenerator(
+                                        player_name = SP_PLAYER_NAME,
+                                        _async_handler = st.session_state.ash)#, _dump_info = pass_popup())
+        if st.session_state.mg_backend.run_asynch_manually:
+            
+            from asyncio import get_event_loop as asyncio_get_loop
+            #print(f'+++++++++++++++++++++++++++++++++++++Thread ID { st.session_state.loop._thread_id}')
+            #print(f'+++++++++++++++++++++++++++++++++++++get Thread ID { asyncio_get_loop()._thread_id}')
+            await st.session_state.ash.create_task(st.session_state.mg_backend.setup())
+                
         
     # ___________________ Load Player ___________________ 
     with popup('Connecting to Spotify'):
@@ -109,9 +136,11 @@ def main():
                 format_func = lambda x: 
                 f'"{st.session_state.mg_pl_names[x]}" with {st.session_state.mg_pl_track_total[x]} tracks')   
             
+            
             play_btn = st.button(
                 label='CREATE MEDLEY',
-                on_click=play)
+                on_click= await st.session_state.ash.create_task(play()),
+                args = ())
     
     # ___________________ Display Player ___________________              
     if play_btn:
@@ -122,7 +151,7 @@ def main():
             display_player()
 
     if play_btn:
-        play()
+        await st.session_state.ash.create_task(play())
         
 def local_css(file_name):
     with open(file_name) as f:
@@ -136,9 +165,22 @@ if __name__ == "__main__":
     # cached via interface
     SP_PLAYER_NAME = 'MEDLEY PLAYER'
     st.session_state.play_duration_in_sec = 15
-    if 'mg_backend' not in st.session_state:
-        st.session_state.mg_backend = MedleyGenerator(player_name = SP_PLAYER_NAME)#, _dump_info = pass_popup())
     
     local_css("src/style.css")
-    main()
+     
+    if 'ash' not in st.session_state:
+        from src.streamlit_interface import AsyncHandler
+        st.session_state.ash = AsyncHandler()
+        st.session_state.ash.run(main)
+      
+    else:
+        from asyncio import create_task as asyncio_create_task 
+        from asyncio import gather as asyncio_gather  
+        main_task = st.session_state.ash.create_task(main())
+        #asyncio_gather(main_task)
+    
+    
+     
+    #from asyncio import set_event_loop as asyncio_set_loop
+    #asyncio_set_loop(st.session_state.loop)
     

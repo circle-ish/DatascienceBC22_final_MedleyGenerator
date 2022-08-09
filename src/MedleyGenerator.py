@@ -2,25 +2,29 @@ class MedleyGenerator():
      
     from src.utils import PrintLogger
     
-    def __init__(self, player_name, dump_info = PrintLogger.register('MedleyGenerator')):
-        from src.streamlit_interface import AsyncHandler
+    def __init__(self, player_name, _async_handler = None, _dump_info = PrintLogger.register('MedleyGenerator')):
             
+        self.run_asynch_manually = False
         self.song_dict = {}
-        self.dump_info = dump_info
+        self.dump_info = _dump_info
         self.player_name = player_name
             
         self.sp_handler = None
         self.yt_handler = None
-        self.ash = AsyncHandler()
+        
+        if _async_handler:
+            from src.streamlit_interface import AsyncHandler
+            self.ash = AsyncHandler()
+        else:
+            self.ash = _async_handler
+            
         import asyncio
         with self.dump_info('Setting up MG'):
-            if not self.ash.is_event_loop_running():
-                asyncio.run(self.setup())
-            else:
-                self.dump_info().log('Call asyncio.create_task on setup() manually.', important=True)
-                
+            ran = self.ash.run(self.setup)
+            self.run_asynch_manually = not ran
     
     async def setup(self):
+        self.run_asynch_manually = False
         from src.streamlit_interface import SpotifyHandler, RequestsYTHandler
         import os
         
@@ -32,7 +36,7 @@ class MedleyGenerator():
         with self.dump_info('Creating YoutubeHandler'):
             self.yt_handler = RequestsYTHandler(_async_handler = self.ash)
         with self.dump_info('Setting up Connection to Youtube'):
-            await self.ash.create_task(self.yt_handler.setup())
+            await self.yt_handler.setup()
         
     def get_token(self):
         return self.sp_handler.get_token()
@@ -44,15 +48,20 @@ class MedleyGenerator():
         # lambda func as opposed to functools.partials use late bindings (keeping the reference
         # to the scope of device_id but fetching it not until execution) which makes it perfect
         # to avoid problems around changing device id
+    
         with self.dump_info(f'Getting Spotify device_id for {self.player_name}'):
-            self.device_id = self.sp_handler.get_device_id(self.player_name, wait=True)
-        play_func = lambda x: self.sp_handler.play(uri = x, device_id = self.device_id)
+            device_id = self.sp_handler.get_device_id(self.player_name, wait=True)
+        play_func = lambda x, **kwargs: self.sp_handler.play(
+                                                device_id, # device_id = 
+                                                context_uri = None,
+                                                uris = [x], 
+                                                **kwargs)
         return play_func
     
     def toggle_play(self):
         with self.dump_info(f'Getting Spotify device_id for {self.player_name}'):
-            self.device_id = self.sp_handler.get_device_id(self.player_name, wait=True)
-        return_code = self.sp_handler.toggle_play(self.device_id)
+            device_id = self.sp_handler.get_device_id(self.player_name, wait=True)
+        return_code = self.sp_handler.toggle_play(device_id)
         return return_code
         
     def create_medley(self, pl_uri, snippet_duration_in_sec):
@@ -62,17 +71,19 @@ class MedleyGenerator():
         self.ash.add_queue(song_queue_name)
         
         with self.dump_info('Gathering Songs'):
-            if not self.ash.is_event_loop_running():
-                asyncio.run(self.gather_songs(
+            ran = self.ash.run(self.gather_songs, (
                                     pl_uri, 
                                     snippet_duration_in_sec, 
                                     self.ash.get_queue(song_queue_name)))
-            else:
-                self.dump_info().log('Call asyncio.create_task on gather_songs() manually.', important=True)
+            
+            self.run_asynch_manually = not ran
                 
         return MedleyContextManager(self.ash.get_queue(song_queue_name))
                    
     async def gather_songs(self, pl_uri, snippet_duration_in_sec, song_queue):
+        
+        self.run_asynch_manually = False
+        
         # get tracks for chosen playlist
         with self.dump_info('Retrieving Songs from Spotify'):
             sp_track_uri, sp_track_names, sp_track_artists, sp_track_duration, sp_track_popularity = \

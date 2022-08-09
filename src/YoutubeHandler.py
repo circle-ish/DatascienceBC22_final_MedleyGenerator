@@ -16,13 +16,11 @@ class YoutubeHandler():
             del self.ash        
             del self.proxy_handler
             del self.dump_info
-            del self.net_connection
 
             self.proxy_handler = None
             self.user_agent = None
             self.ash = None        
             self.dump_info = None
-            self.net_connection = None
         
         if exc_type:
             print(exc_type, exc_value, exc_traceback)        
@@ -40,8 +38,10 @@ class YoutubeHandler():
         YoutubeHandler.set_user_agent_for_running(self)
         
     # following https://stackoverflow.com/a/54713821/19347187
-    async def set_proxy_for_running(self):            
-        proxy_ip, proxy_port = await self.ash.get_proxy()
+    async def set_proxy_for_running(self):      
+        self.dump_info().log('Waiting for Proxy Server')
+        proxy_ip, proxy_port = await self.proxy_handler.get_proxy()
+        self.dump_info().log('Got a Proxy')
         was_success = self.set_proxy_for_running(proxy_ip, proxy_port)
         if was_success:
             self.dump_info().log(f'Using proxy = https://{proxy_ip}:{proxy_port}.') 

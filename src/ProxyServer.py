@@ -34,34 +34,31 @@ class ProxyServer():
         if exc_type:
             print(exc_type, exc_value, exc_traceback)
             
-    async def get_random_proxy(self):
+    async def get_a_proxy(self):
         """
-        Get random proxy from proxy queue
+        Get proxies from proxy queue until queue is empty.
         """
-        from random import choice as random_choice
+        self.dump_info().log(f'Proxy queue has currently {self.proxy_queue.qsize()} items.')
         
-        while True:
+        while True: #not self.proxy_queue.empty():         
+            self.dump_info().log('Waiting to receive proxies.')
             proxy = await self.proxy_queue.get()
             self.proxy_queue.task_done()
             
-            if proxy is None:
-                break
-
-            # Check accurately if the proxy is working.
-            if proxy.is_working:
+            if proxy and proxy.is_working:
                 protocol = 'https'
-                line = f'{protocol}://{proxy.host}:{proxy.port}\n'
+                line = f'{protocol}://{proxy.host}:{proxy.port}'
                 yield line
+            else:
+                self.dump_info().log(f'Disregarding invalid proxy {proxy} .')
 
-            
     async def get_proxy(self):
         from src.AsyncHandler import AsyncHandler as ash
 
-        proxy_string = await ash.yielder(self.get_random_proxy)
-        if not proxy_string:
-            self.dump_info().log('Requesting new proxies.')
+        proxy_string = await ash.yielder(self.get_a_proxy)
+        while not proxy_string:
             await self.find_proxies()
-            proxy_string = await ash.yielder(self.get_random_proxy)
+            proxy_string = await ash.yielder(self.get_a_proxy)
          
         return self.read_proxy_string(proxy_string)
     
@@ -73,17 +70,9 @@ class ProxyServer():
     
     async def find_proxies(self):
         european_country_codes = ['DE', 'AT', 'FR', 'UK', 'IT', 'HU', 'IE', 'GR', 'LV', 'LT', 'NL', 'PL', 'RO', 'SK', 'SI', 'ES', 'SE', 'BE', 'BG', 'HR', 'DK', 'EE', 'FI']
-        producer = self.ash.create_task(self.broker.find(
-                                                    types=['HTTPS'], 
-                                                    limit= self.no_of_proxies, 
-                                                    countries = european_country_codes))
-        
-    # following this example
-    # https://github.com/LonamiWebs/Telethon/issues/825#issuecomment-395008836
-    #def __exit__(self, exc_type, exc_value, exc_traceback):
-        '''if exc_type and self.loop:
-            pending = asyncio.all_tasks(self.loop)
-            for task in pending:
-                task.cancel()
-            self.loop.run_until_complete(asyncio.gather(*pending, loop=self.loop))
-            self.loop.close()'''
+        with self.dump_info('Searching for new proxies.'):
+            producer = self.ash.create_task(self.broker.find(
+                                    types=['HTTPS'], 
+                                    limit= self.no_of_proxies, 
+                                    countries = european_country_codes))
+            #await producer

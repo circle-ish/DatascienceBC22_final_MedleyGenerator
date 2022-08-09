@@ -28,16 +28,16 @@ class AsyncHandler():
             item = i
             break
         return item
-    
+        
     def add_queue(self, name):
         import warnings
         with warnings.catch_warnings():
             warnings.simplefilter("ignore", category=DeprecationWarning)
             from asyncio import Queue as asyncio_Queue
         if name in self.queues:
-            pass
-        
-        self.queues[name] = asyncio_Queue()
+            self.dump_info().log(f'Queue {name} already exists.')
+        else:
+            self.queues[name] = asyncio_Queue()
         return self.get_queue(name)
         
     def get_queue(self, name):
@@ -55,34 +55,34 @@ class AsyncHandler():
         
         return asyncio_gather(*args, **kwargs)
     
-    async def run(self, *args, **kwargs):
-        task = None
-        
+    def run(self, func, *func_args):    
+        #self.running_loop = self.get_event_loop()    
         if self.running_loop:
-            task = self.create_task(*args, **kwargs)
+            self.dump_info().log(f'Running loop detected: call asyncio.create_task on {func} manually.', important=True)
+            return False
         else:
             from asyncio import run as asyncio_run
-            task = asyncio_run(*args, **kwargs)
-            
-        self.task_set.add(task)
-        await self.gather(task_set)
-        return task
+            from asyncio import gather as asyncio_gather
+            from asyncio import new_event_loop as asyncio_new_loop
+            with self.dump_info(f'Start running loop for {func}.'):
+                #asyncio_run(func(*func_args))
+                self.running_loop = asyncio_new_loop()
+                task = self.create_task(func(*func_args))
+                #asyncio_gather(task)
+                self.running_loop.run_forever()
+            return True
     
     def create_task(self, *args, **kwargs):
-        self.running_loop = self.get_event_loop()
+        self.dump_info().log(f'Creating task {args}')
+        #self.running_loop = self.get_event_loop()
         if self.running_loop:
             task = self.running_loop.create_task(*args, **kwargs)
-        else:
-            
-            import warnings
-            with warnings.catch_warnings():
-                warnings.simplefilter("ignore", category=DeprecationWarning)
-                from asyncio import create_task as asyncio_create_task
-            
-            task = asyncio_create_task(*args, **kwargs)
-        
+
         self.task_set.add(task)
         return task
+    
+    async def create_n_wait(self, *args, **kwargs):
+        await self.create_task(*args, **kwargs)
         
     def is_event_loop_running(self, *args, **kwargs):
         

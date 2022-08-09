@@ -6,7 +6,7 @@ class RequestsYTHandler(YoutubeHandler):
     def __init__(self, dump_info = PrintLogger.register('RequestsYTHandler'), *args, **kwargs):
         self.response = None
         self.session = None
-        YoutubeHandler.__init__(self, dump_info = dump_info, *args, **kwargs)
+        super().__init__(dump_info = dump_info, *args, **kwargs)
     
     def __exit__(self, exc_type, exc_value, exc_traceback):
         
@@ -17,9 +17,10 @@ class RequestsYTHandler(YoutubeHandler):
         del self.response
         self.response = None
         
-        YoutubeHandler.__exit__(self, exc_type, exc_value, exc_traceback)
+        super().__exit__(exc_type, exc_value, exc_traceback)
    
     def quit_connection(self):
+        self.session.close()
         del self.session
         self.session = None
             
@@ -32,15 +33,15 @@ class RequestsYTHandler(YoutubeHandler):
             self.quit_connection()
         
         self.init_session()
-        YoutubeHandler.setup_connection(self)
+        await super().setup_connection()
         
-    async def set_proxy_for_running(self, proxy_ip, proxy_port):
+    def set_proxy_for_running(self, proxy_ip, proxy_port):
         # format "http://10.10.1.11:1080"
         # has to be 'http' even for https
         proxy_string = f'http://{proxy_ip}:{proxy_port}'
         proxy = {'https': proxy_string, 'http': proxy_string}
 
-        self.session.proxies = proxies
+        self.session.proxies = proxy
         return True
             
     def set_user_agent_for_running(self, user_agent):        
@@ -62,15 +63,14 @@ class RequestsYTHandler(YoutubeHandler):
             except ProxyError as pe:
                 if retries < 3:
                     self.dump_info().log('Changing proxy.')
-                    YoutubeHandler.set_proxy_for_running(self)
+                    super().set_proxy_for_running()
                 self.response = None
             except ConnectionError as ce:
                 self.dump_info().log('Connection Error.', important=True)
 
             if self.response and (retries < 3) and (self.response.url != url):     # redirected to captcha
                 self.dump_info().log('Ran into captcha police. New proxy and user agent.')
-                await YoutubeHandler.set_proxy_for_running(self)
-                YoutubeHandler.set_user_agent_for_running(self)
+                await super().setup_connection()
                 self.response = None
                 
             # if an error occurs above, the flow enters here and increases retries counter
