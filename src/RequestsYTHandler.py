@@ -91,6 +91,9 @@ class RequestsYTHandler(YoutubeHandler):
         yt_string = self.response.text
         
         matches = re_findall(pattern, yt_string)
+        if (not matches) or (len(matches) == 0):
+            return None
+        
         (time_start_in_ms, duration_in_ms, score) = \
                             list(zip(*[(float(a), float(b), float(c)) for a,b,c in matches]))
         
