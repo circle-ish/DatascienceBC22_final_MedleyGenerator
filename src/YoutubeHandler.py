@@ -76,8 +76,14 @@ class YoutubeHandler():
         graph = await self.get_heatmaps_from_yt(total_duration_in_ms)
         return graph 
     
-    def search(self, query):
+    def search(self, query, return_amount = 3, skip_ids = []):
+        from src.utils import PrintLogger
+        
+        if len(skip_ids) > 0:
+            self.dump_info().log(f'Searching again for {query=}.')
+            
         query = query.replace(' ', '+')
+        return_amount += len(skip_ids)
         
         # order = {date, rating, relevance, title, videoCount, viewCount) see above link
         lemnos_yt_url = f'https://yt.lemnoslife.com/search?part=id,snippet&q={query}&type=video&order=viewCount'
@@ -90,11 +96,41 @@ class YoutubeHandler():
         import json
         yt_search = response.json()['items']
         
-        video_number = 0  #                                        <<<<--- not productive
-        vid_id = yt_search[video_number]['id']['videoId']
-        vid_name = yt_search[video_number]['snippet']['title']
+        vid_ids, vid_names = [], []
+        i = 0 
+        while (len(vid_ids) != return_amount) and (i < len(yt_search)):
+            vid_id = yt_search[i]['id']['videoId']
+            
+            if vid_id not in skip_ids:
+                vid_ids.append(vid_id)
+                vid_names.append(yt_search[i]['snippet']['title'])
+                
+            i += 1
+            
+        if not vid_ids:
+            return None, None
+        if None in vid_names:
+            self.dump_info().log(f'{PrintLogger.BOLD}Found a None {vid_names}.')
+            
 
-        # TODO Priorise results with keywords
+        # Priorise results with keywords or good matches
         keywords = ['official', 'lyrics']
+        has_keywords = [any([True for key in keywords if key in vid]) for vid in vid_names if vid]
         
-        return vid_id, vid_name
+        from src.utils import install_pip_pkg
+        install_pip_pkg({'jellyfish'})
+        from jellyfish import levenshtein_distance as jf_levenshtein_distance
+        match_distances = [jf_levenshtein_distance(query, result) for result in vid_names]
+        
+        candidates = [(i, match_distances[i]) for i, booly in enumerate(has_keywords) if booly]
+        candidates = sorted(candidates, key = lambda x: x[1])
+        
+        best = None
+        if candidates:
+            best = candidates[0][0]
+        else:
+            min_distance = min(match_distances)
+            best = [i for i, dist in enumerate(match_distances) if dist == min_distance][0]
+
+        self.dump_info().log(f'For {query=} choosing YT video {PrintLogger.BOLD}{vid_names[best]}.')
+        return vid_ids[best], vid_names[best]
