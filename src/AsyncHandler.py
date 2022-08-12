@@ -55,12 +55,12 @@ class AsyncHandler():
         
         return asyncio_gather(*args, **kwargs)
     
-    def run(self, func, *func_args):    
-        #self.running_loop = self.get_event_loop()    
-        if self.running_loop:
+    def run(self, func, *func_args):       
+        if self.is_event_loop_running():
             self.dump_info().log(f'Running loop detected: call asyncio.create_task on {func} manually.', important=True)
             return False
         else:
+            self.running_loop = self.get_event_loop() 
             from asyncio import run as asyncio_run
             from asyncio import gather as asyncio_gather
             from asyncio import new_event_loop as asyncio_new_loop
@@ -69,14 +69,15 @@ class AsyncHandler():
                 self.running_loop = asyncio_new_loop()
                 task = self.create_task(func(*func_args))
                 #asyncio_gather(task)
-                self.running_loop.run_forever()
+                #self.running_loop.run_forever()
             return True
     
     def create_task(self, *args, **kwargs):
         self.dump_info().log(f'Creating task {args}')
-        #self.running_loop = self.get_event_loop()
-        if self.running_loop:
-            task = self.running_loop.create_task(*args, **kwargs)
+        if not self.running_loop:
+            self.running_loop = self.get_event_loop()
+        
+        task = self.running_loop.create_task(*args, **kwargs)
 
         self.task_set.add(task)
         return task
@@ -107,9 +108,13 @@ class AsyncHandler():
             return None    
 
     def get_event_loop(self, *args, **kwargs):
-        self.running_loop = self.is_event_loop_running(*args, **kwargs)
+        loop = self.is_event_loop_running(*args, **kwargs)
         
-        return self.running_loop
+        if loop:
+            return loop
+        else:
+            from asyncio import create_event_loop as async_create_event_loop
+            return async_create_event_loop()
         
     async def sleep(self, duration):
         from asyncio import sleep as asyncio_sleep
