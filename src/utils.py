@@ -205,7 +205,8 @@ class MyMySQLConnection:
             df : DataFrame, 
             tablename : Text, 
             insert_mode : Text,
-            external_con : Connection
+            external_con : Connection,
+            chunksize = 1000 
     ) -> None : 
              
         # replace messes up the column types
@@ -217,11 +218,11 @@ class MyMySQLConnection:
 
         df.to_sql(
             name= tablename,
-            if_exists=insert_mode, #'replace'
+            if_exists=insert_mode, 
             con=external_con, 
             schema=self.db_name,
             index=False,
-            chunksize=1000
+            chunksize=chunksize
         )           
                 
     def add_tables_to_db(
@@ -237,7 +238,6 @@ class MyMySQLConnection:
         # 'begin' opens a transaction and the 'with' environment cares for a rollback if something 
         # goes wrong
         with self.alch_engine.begin() as con:
-            remaining_calls = len(dfs)
             for i, df in enumerate(dfs):
                 self.add_table_to_db(
                     df, 
@@ -323,11 +323,11 @@ class PrintLogger():
     def __exit__(self, exc_type, exc_value, exc_traceback):
         if exc_type:
             if self.text:
-                self.printer(self.text + ' FAILED')
+                self.printer(f'{self.text} {PrintLogger.BOLD}FAILED')
             print(exc_type, exc_value)#, exc_traceback)
-        else:
-            if self.text:
-                self.printer(self.text + ' SUCCESSFUL')
+        #else:
+            #if self.text:
+                #self.printer(self.text + ' SUCCESSFUL')
             
     def log(self, text, important = False):
         if important:
@@ -343,6 +343,7 @@ class PrintLogger():
     def printer(self, text):
         print(self.colour + f'{self.leading_string}  {text}')
         
+    BOLD = '\033[1m'
         
     @classmethod        
     def register(cls, entity):
