@@ -12,7 +12,7 @@ class MedleyGenerator():
         self.sp_handler = None
         self.yt_handler = None
         
-        if _async_handler:
+        if not _async_handler:
             from src.streamlit_interface import AsyncHandler
             self.ash = AsyncHandler()
         else:
